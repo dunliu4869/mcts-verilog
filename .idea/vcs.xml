@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="VcsDirectoryMappings">
+    <mapping directory="$PROJECT_DIR$" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/skywater-pdk" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/skywater-pdk/libraries/sky130_fd_io/latest" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/skywater-pdk/libraries/sky130_fd_pr/latest" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/skywater-pdk/libraries/sky130_fd_pr_reram/latest" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/skywater-pdk/libraries/sky130_fd_sc_hd/latest" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/skywater-pdk/libraries/sky130_fd_sc_hdll/latest" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/skywater-pdk/libraries/sky130_fd_sc_hs/latest" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/skywater-pdk/libraries/sky130_fd_sc_hvl/latest" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/skywater-pdk/libraries/sky130_fd_sc_lp/latest" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/skywater-pdk/libraries/sky130_fd_sc_ls/latest" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/skywater-pdk/libraries/sky130_fd_sc_ms/latest" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/skywater-pdk/third_party/make-env" vcs="Git" />
+  </component>
+</project>
