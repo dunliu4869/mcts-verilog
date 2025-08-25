@@ -1,4 +1,6 @@
 import os
+import shutil
+
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 import re
 import random, torch
@@ -47,6 +49,7 @@ class MCTSSearcher:
             model_name,
             use_auth_token=hf_token
         )
+
         self.model = AutoModelForCausalLM.from_pretrained(
             model_name,
             use_auth_token=hf_token
@@ -161,70 +164,134 @@ class MCTSSearcher:
         with open(dut_path, 'w', encoding='utf-8') as f:
             f.write(full_code_to_write)
 
-        # === Stage 1: Functional Verification (Icarus Verilog) ===
+        # write testbench
         sim_path = os.path.join(ws, 'sim.v')
         with open(sim_path, 'w', encoding='utf-8') as f:
             f.write(problem["testbench"])
 
+        # === Stage 1: Functional Verification (Icarus Verilog) == =
         try:
             # Compile with iverilog
-            p1 = subprocess.run(['iverilog', '-g2005-sv', '-o', 'out.vvp', 'sim.v'], cwd=ws, capture_output=True, text=True, timeout=30)
+            p1 = subprocess.run(['iverilog', '-g2005-sv', '-o', 'out.vvp', 'sim.v'],
+                                cwd=ws, capture_output=True, text=True, timeout=30)
             if p1.returncode != 0:
+                # debugging
+                print("--- EVALUATION FAILED: COMPILE_FAIL (iverilog) ---")
+                #\nCode:\n{full_code_to_write}\nError:\n{p1.stderr}\n----------------\n")
+                # Cleanup and return
+                # print(f"--- COMPILE_FAIL --- Workspace kept at: {ws}")
+                # print(f"Error:\n{p1.stderr}\n----------------\n")
+                shutil.rmtree(ws)
                 return "COMPILE_FAIL", None, None, full_code_to_write
 
             # Simulate with vvp
-            p2 = subprocess.run(['vvp', 'out.vvp'], cwd=ws, capture_output=True, text=True, timeout=30)
+            p2 = subprocess.run(['vvp', 'out.vvp'],
+                                cwd=ws, capture_output=True, text=True, timeout=30)
             if p2.returncode != 0:
+                # debugging
+                print("--- EVALUATION FAILED: SIM_FAIL (vvp) ---")
+                #\nCode:\n{full_code_to_write}\n----------------\n")
+                #print("--- Verilog Testbench Output ---")
+                #print(p2.stdout)
+                #if p2.stderr:
+                    #print("--- Simulator Errors ---")
+                    #print(p2.stderr)
+                #print("--------------------------------")
+                # Cleanup and return
+                #print("--- SIM_FAIL --- ")
+                #Workspace kept at: {ws}")
+                # print(f"Testbench Output:\n{p2.stdout}")
+                # if p2.stderr: print(f"Simulator Errors:\n{p2.stderr}")
+                # print("--------------------------------")
+                shutil.rmtree(ws)
                 return "SIM_FAIL", None, None, full_code_to_write
 
         except subprocess.TimeoutExpired:
+            print(f"--- TIMEOUT_FAIL (Simulation) --- Workspace kept at: {ws}")
+            shutil.rmtree(ws)
             return "TIMEOUT_FAIL", None, None, full_code_to_write
 
         # === Stage 2: PPA Analysis (Yosys -> Standalone ABC) ===
         try:
-            # Define paths for our two-step workflow
-            blif_file = os.path.join(ws, "design.blif")
+            # Define paths and filenames
             abc_executable = os.path.expanduser("~/abc/abc")
-            genlib_file = os.path.expanduser("~/mcnc/mcnc.genlib")
+            lib_file = os.path.expanduser("~/test2/NangateOpenCellLibrary_typical_ccs.lib")
+            blif_file_name = "design.blif"  # Use relative filename
 
-            # --- YOSYS COMMAND ---
-            yosys_script = f"read_verilog {dut_path}; hierarchy -top {problem['module_name']}; synth; write_blif {blif_file}"
-            yosys_command = ["yosys", "-p", yosys_script]
-            subprocess.run(yosys_command, check=True, capture_output=True, text=True, timeout=30)
+            # --- YOSYS COMMAND (runs inside workspace) ---
+            # Note: We use relative paths for files inside the workspace
+            yosys_script = (
+                f"read_verilog dut.v; "
+                f"hierarchy -top {problem['module_name']}; "
+                f"synth; " 
+                f"flatten; write_blif {blif_file_name}"
+            )
+            subprocess.run(
+                ["yosys", "-p", yosys_script],
+                cwd=ws,  # Set working directory to the workspace
+                check=True, capture_output=True, text=True, timeout=30
+            )
 
-            # --- STANDALONE ABC COMMAND ---
-            abc_script = f"read_genlib {genlib_file}; read_blif {blif_file}; strash; map; stat; print_delay"
-            abc_command = [abc_executable, "-c", abc_script]
-            abc_result = subprocess.run(abc_command, check=True, capture_output=True, text=True, timeout=30)
+            # --- ABC COMMANDS (via stdin) ---
+            # This is the robust method from the successful script
+            abc_script = "\n".join([
+                f"read_lib {lib_file}",
+                f"read_blif {blif_file_name}",
+                "strash",
+                "map",
+                "print_stats",
+                "quit"
+            ]) + "\n"
+            script_path = os.path.join(ws, "abc.script")
+            with open(script_path, 'w') as f:
+                f.write(abc_script)
+
+            # Execute ABC by piping the script to its standard input
+            abc_result = subprocess.run([abc_executable],
+                                        cwd=ws, input=abc_script, check=True, capture_output=True, text=True, timeout=30)
             abc_output = abc_result.stdout
 
-            # --- PARSE ABC's TEXT OUTPUT (Robust Version) ---
+            # --- PARSE ABC's TEXT OUTPUT (from successful script) ---
             area = 0.0
             delay = 0.0
 
-            # Parse Area from the 'stat' command output
-            area_match = re.search(r"area\s*=\s*([\d.]+)", abc_output)
+            # Parse Area from 'print_stats' output
+            area_match = re.search(r"\barea\s*=\s*([0-9]+(?:\.[0-9]+)?)", abc_output)
             if area_match:
                 area = float(area_match.group(1))
 
-            # Parse Delay from the 'print_delay' command output by finding the last "Arrival" time
-            lines = abc_output.strip().splitlines()
-            for line in reversed(lines):
-                arrival_match = re.search(r"Arrival\s*=\s*([\d.]+)", line)
-                if arrival_match:
-                    delay = float(arrival_match.group(1))
-                    break  # Stop after finding the last one
+            # Parse Delay from the same 'print_stats' output
+            delay_match = re.search(r"\bdelay\s*=\s*([0-9]+(?:\.[0-9]+)?)", abc_output)
+            if delay_match:
+                delay = float(delay_match.group(1))
+
+            # # Parse Delay by finding the last "Arrival" time
+            # for line in reversed(abc_output.strip().splitlines()):
+            #     arrival_match = re.search(r"Arrival(?: time)?\s*=\s*([0-9]+(?:\.[0-9]+)?)", line)
+            #     if arrival_match:
+            #         delay = float(arrival_match.group(1).rstrip('.'))
+            #         break  # Stop after finding the last one (the final delay)
 
             if area == 0 or delay == 0:
+                print(f"--- SYNTH_FAIL (Invalid PPA) --- Workspace kept at: {ws}")
+                # Print the values of area and delay for debugging
+                print(f"  [DEBUG] Triggering condition: Area = {area}, Delay = {delay}")
+                # It's also helpful to see the ABC output that was parsed
+                print(f"  [DEBUG] Raw ABC Output that was parsed:\n---\n{abc_output}\n---")
+                # shutil.rmtree(ws)
                 return "SYNTH_FAIL", None, None, full_code_to_write
 
-            print(
-                f"--- EVALUATION SUCCEEDED --- \nCode:\n{full_code_to_write}\nArea: {area}, Delay: {delay}\n----------------\n")
+            print("--- EVALUATION SUCCEEDED ---")
+            #\nCode:\n{full_code_to_write}\nArea: {area}, Delay: {delay}\n----------------\n")
+            shutil.rmtree(ws)  # Clean up workspace after success
             return "SUCCESS", area, delay, full_code_to_write
 
         except (subprocess.TimeoutExpired, subprocess.CalledProcessError) as e:
-            # Catch errors from Yosys or ABC execution
+            # Catch errors from Yosys or ABC and clean up
             print(f"--- PPA ANALYSIS FAILED ---\n{e.stderr if hasattr(e, 'stderr') else e}")
+            shutil.rmtree(ws)
+            # print(f"--- PPA ANALYSIS FAILED --- Workspace kept at: {ws}")
+            # print(f"Error:\n{e.stderr if hasattr(e, 'stderr') else e}")
             return "SYNTH_FAIL", None, None, full_code_to_write
 
 
@@ -238,7 +305,7 @@ class MCTSSearcher:
                output_dir: str,
                n_sim: int = 100,
                rollout_mode: str = 'greedy',
-               debug_print_interval: int = 2000):
+               debug_print_interval: int = 500):
         """
         MCTS process：
         1) Selection
@@ -386,7 +453,7 @@ if __name__ == '__main__':
     searcher = MCTSSearcher(
         model_name='shailja/fine-tuned-codegen-2B-Verilog',
         hf_token=token,
-        c_puct=1.38,
+        c_puct=3.00,
         top_k_expand=20,
         rollout_top_k=50,
         rollout_temperature=1.0,
@@ -429,8 +496,8 @@ if __name__ == '__main__':
         final_tokens, final_code, reward_history = searcher.search(
             problem=current_problem,
             output_dir=output_dir,  # 传入路径
-            n_sim=2000,
-            rollout_mode='sample'
+            n_sim=5000,
+            rollout_mode='greedy'
         )
 
 

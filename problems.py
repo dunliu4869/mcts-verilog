@@ -14,9 +14,12 @@ adder4_problem = {
     "module_name": "adder4",
     "yosys_module_name": "\\adder4",
     "prompt": textwrap.dedent("""\
-        // Design a 4-bit adder.
+        // Design a 4-bit ripple-carry adder using a structural Verilog description like connecting four 'full_adder' instances.
+        // Instantiate the 'full_adder' module four times to build the 4-bit adder.
         // It has two 4-bit inputs, a and b, and a 1-bit carry-in, cin.
         // The outputs are a 4-bit value, sum, and a single carry-out bit, cout.
+        // In the top-level module, only declare ports and intermediate wires, and instantiate the full_adder submodule bit by bit.
+        // Remember to wire the carry-out of one stage to the carry-in of the next.
         module adder4(
             input  [3:0] a,
             input  [3:0] b,
@@ -74,16 +77,117 @@ adder4_problem = {
         """)
 }
 
-# --- Problem 1: 8-bit Adder (Dependency - Must be defined first, as it is depended upon by other issues) ---
-adder8_problem = {
-    "name": "8-bit Adder",
+adder8_problem_scenario_2 = {
+    "name": "8-bit Adder (Complete and Build)",
     "module_name": "adder8",
     "yosys_module_name": "\\adder8",
     "prompt": textwrap.dedent("""\
-        // Design an 8-bit adder.
-        // It has two 8-bit inputs, a and b, and a 1-bit carry-in, cin.
-        // The outputs are an 8-bit value, sum, and a single carry-out bit, cout.
-        // The module should perform addition on the inputs to produce the sum and cout values.
+        // Complete 2 verilog block below.
+        // Your first task is to complete the 'full_adder' block.
+        // It should calculate a 1-bit sum and a 1-bit carry-out.
+        // Second, use the completed 'full_adder' to build a structural 8-bit ripple-carry adder in the 'adder8' part by instantiating it 8 times.
+        module full_adder(
+            input a, b, cin,
+            output sum, cout
+        );
+
+
+        module adder8(
+            input  [7:0] a,
+            input  [7:0] b,
+            input        cin,
+            output [7:0] sum,
+            output       cout
+        );
+
+
+        """),
+    "testbench": textwrap.dedent("""\
+        `timescale 1ns/1ps
+        `include "dut.v"
+        module tb;
+          reg [7:0] a, b; reg cin;
+          wire [7:0] sum; wire cout;
+          integer i, j, k, error_count;
+          adder8 UUT(.a(a), .b(b), .cin(cin), .sum(sum), .cout(cout));
+          initial begin
+            error_count = 0;
+            for (i = 0; i < 256; i = i + 1) for (j = 0; j < 256; j = j + 1) for (k = 0; k < 2; k = k + 1) begin
+              a = i; b = j; cin = k; #10;
+              if ({cout, sum} !== a + b + cin) begin
+                $display("ERROR [8-bit Adder]: a=%h, b=%h, cin=%b -> GOT: %h, EXPECTED: %h", a, b, cin, {cout, sum}, a + b + cin);
+                error_count = error_count + 1;
+              end
+            end
+            if (error_count == 0) $display("All 131,072 tests passed for 8-bit adder!");
+            else $fatal(1, "Found %0d errors in 8-bit adder test.", error_count);
+            $finish(0);
+          end
+        endmodule
+        """)
+}
+
+
+
+full_adder_problem = {
+    "name": "Full Adder",
+    "module_name": "full_adder",
+    "yosys_module_name": "\\full_adder",
+    "prompt": textwrap.dedent("""\
+        // Design a 1-bit full adder.
+        // It has three 1-bit inputs: a, b, and cin.
+        // It has two 1-bit outputs: sum and cout.
+        module full_adder(
+            input  a,
+            input  b,
+            input  cin,
+            output sum,
+            output cout
+        );
+        """),
+    "testbench": textwrap.dedent("""\
+        `timescale 1ns/1ps
+        `include "dut.v"
+        module tb;
+          reg a, b, cin;
+          wire sum, cout;
+          integer i, j, k, error_count;
+          full_adder UUT(.a(a), .b(b), .cin(cin), .sum(sum), .cout(cout));
+          initial begin
+            error_count = 0;
+            for (i = 0; i < 2; i = i + 1) for (j = 0; j < 2; j = j + 1) for (k = 0; k < 2; k = k + 1) begin
+              a = i; b = j; cin = k; #10;
+              if ({cout, sum} !== a + b + cin) begin
+                $display("ERROR: a=%b, b=%b, cin=%b -> GOT: %b, EXPECTED: %b", a, b, cin, {cout, sum}, a + b + cin);
+                error_count = error_count + 1;
+              end
+            end
+            if (error_count == 0) $display("All 8 tests passed for full_adder!");
+            else $fatal(1, "Found %0d errors.", error_count);
+            $finish(0);
+          end
+        endmodule
+        """)
+}
+
+
+adder8_problem_mod = {
+    "name": "8-bit Adder (mod)",
+    "module_name": "adder8",
+    "yosys_module_name": "\\adder8",
+    "depends_on": "Full Adder",
+    "prompt_template": textwrap.dedent("""\
+        // Here is the pre-generated, optimized full_adder module.
+        // You can instantiate it in your design.
+        // START of provided full_adder context:
+        {dependency_code}
+        // END of provided full_adder context.
+        
+        // Now, using the full_adder module, design a 8-bit ripple-carry adder using a structural Verilog description like connecting eight 'full_adder' instances>
+        // In the top-level block, only declare ports and intermediate wires.
+        // Instantiate the full_adder submodule eight times to build this 8bit adder module.
+        // Remember to wire the carry-out of one stage to the carry-in of the next.
+        // Complete the following code based on these provided instructions.
         module adder8(
             input  [7:0] a,
             input  [7:0] b,
@@ -117,6 +221,202 @@ adder8_problem = {
         endmodule
         """)
 }
+
+# --- Problem 1: 8-bit Adder (Dependency - Must be defined first, as it is depended upon by other issues) ---
+adder8_problem = {
+    "name": "8-bit Adder",
+    "module_name": "adder8",
+    "yosys_module_name": "\\adder8",
+    "prompt": textwrap.dedent("""\
+        // Design a 8-bit ripple-carry adder using a structural Verilog description like connecting eight 'full_adder' instances.
+        // In the top-level module, only declare ports and intermediate wires.
+        // May need instantiate the full_adder submodule eight times to build this 8bit adder module first and then define full_adder module.
+        // Remember to wire the carry-out of one stage to the carry-in of the next.
+        // Complete the following code based on these provided instructions.
+        module adder8(
+            input  [7:0] a,
+            input  [7:0] b,
+            input        cin,
+            output [7:0] sum,
+            output       cout
+        );
+        """),
+    "testbench": textwrap.dedent("""\
+        `timescale 1ns/1ps
+        `include "dut.v"
+        module tb;
+          reg [7:0] a, b; reg cin;
+          wire [7:0] sum; wire cout;
+          integer i, j, k, error_count;
+          adder8 UUT(.a(a), .b(b), .cin(cin), .sum(sum), .cout(cout));
+          initial begin
+            error_count = 0;
+            // Exhaustive test for all 2^(8+8+1) = 131,072 combinations.
+            for (i = 0; i < 256; i = i + 1) for (j = 0; j < 256; j = j + 1) for (k = 0; k < 2; k = k + 1) begin
+              a = i; b = j; cin = k; #10;
+              if ({cout, sum} !== a + b + cin) begin
+                $display("ERROR [8-bit Adder]: a=%h, b=%h, cin=%b -> GOT: %h, EXPECTED: %h", a, b, cin, {cout, sum}, a + b + cin);
+                error_count = error_count + 1;
+              end
+            end
+            if (error_count == 0) $display("All 131,072 tests passed for 8-bit adder!");
+            else $fatal(1, "Found %0d errors in 8-bit adder test.", error_count);
+            $finish(0);
+          end
+        endmodule
+        """)
+}
+
+
+
+adder8_problem_scenario_1 = {
+    "name": "8-bit Adder (Build with Provided)",
+    "module_name": "adder8",
+    "yosys_module_name": "\\adder8",
+    "prompt": textwrap.dedent("""\
+        // A complete, functional 'full_adder' module is provided.
+        // Your task is to complete the 'adder8' module by instantiating the provided 'full_adder' 8 times to create a ripple-carry adder.
+        // Do NOT redefine the 'full_adder' module.
+        module full_adder(
+            input a, b, cin,
+            output sum, cout
+        );
+            assign sum = a ^ b ^ cin;
+            assign cout = (a & b) | (b & cin) | (a & cin);
+        endmodule
+
+        module adder8(
+            input  [7:0] a,
+            input  [7:0] b,
+            input        cin,
+            output [7:0] sum,
+            output       cout
+        );
+
+        """),
+    "testbench": textwrap.dedent("""\
+        `timescale 1ns/1ps
+        `include "dut.v"
+        module tb;
+          reg [7:0] a, b; reg cin;
+          wire [7:0] sum; wire cout;
+          integer i, j, k, error_count;
+          adder8 UUT(.a(a), .b(b), .cin(cin), .sum(sum), .cout(cout));
+          initial begin
+            error_count = 0;
+            for (i = 0; i < 256; i = i + 1) for (j = 0; j < 256; j = j + 1) for (k = 0; k < 2; k = k + 1) begin
+              a = i; b = j; cin = k; #10;
+              if ({cout, sum} !== a + b + cin) begin
+                $display("ERROR [8-bit Adder]: a=%h, b=%h, cin=%b -> GOT: %h, EXPECTED: %h", a, b, cin, {cout, sum}, a + b + cin);
+                error_count = error_count + 1;
+              end
+            end
+            if (error_count == 0) $display("All 131,072 tests passed for 8-bit adder!");
+            else $fatal(1, "Found %0d errors in 8-bit adder test.", error_count);
+            $finish(0);
+          end
+        endmodule
+        """)
+}
+
+
+adder8_reverse_problem = {
+    "name": "Full Adder (from usage)",
+    "module_name": "adder8",
+    "yosys_module_name": "\\adder8",
+    "prompt": textwrap.dedent("""\
+        // The top-level 'adder8' module is already complete and uses an undefined module named 'full_adder'.
+        // Your task is to define the 'full_adder' module so that the entire design compiles and works correctly.
+        // Based on its instantiation in 'adder8', the 'full_adder' must have the following ports in this exact order: (sum, cout, a, b, cin).
+
+        module adder8(output [7:0] sum, output cout, input [7:0] a,input [7:0]  b, input cin);
+            wire c1, c2, c3, c4, c5, c6, c7;
+
+            full_adder FA1(sum[0], c1, a[0], b[0], cin);
+            full_adder FA2(sum[1], c2, a[1], b[1], c1);
+            full_adder FA3(sum[2], c3, a[2], b[2], c2);
+            full_adder FA4(sum[3], c4, a[3], b[3], c3);
+            full_adder FA5(sum[4], c5, a[4], b[4], c4);
+            full_adder FA6(sum[5], c6, a[5], b[5], c5);
+            full_adder FA7(sum[6], c7, a[6], b[6], c6);
+            full_adder FA8(sum[7], cout, a[7], b[7], c7);
+        endmodule
+
+        // Your task starts here: Define the 'full_adder' module below.
+
+        """),
+    "testbench": textwrap.dedent("""\
+        `timescale 1ns/1ps
+        `include "dut.v"
+        module tb;
+          reg [7:0] a, b; reg cin;
+          wire [7:0] sum; wire cout;
+          integer i, j, k, error_count;
+          adder8 UUT(.a(a), .b(b), .cin(cin), .sum(sum), .cout(cout));
+          initial begin
+            error_count = 0;
+            for (i = 0; i < 256; i = i + 1) for (j = 0; j < 256; j = j + 1) for (k = 0; k < 2; k = k + 1) begin
+              a = i; b = j; cin = k; #10;
+              if ({cout, sum} !== a + b + cin) begin
+                $display("ERROR [8-bit Adder]: a=%h, b=%h, cin=%b -> GOT: %h, EXPECTED: %h", a, b, cin, {cout, sum}, a + b + cin);
+                error_count = error_count + 1;
+              end
+            end
+            if (error_count == 0) $display("All 131,072 tests passed for 8-bit adder!");
+            else $fatal(1, "Found %0d errors in 8-bit adder test.", error_count);
+            $finish(0);
+          end
+        endmodule
+        """)
+}
+
+adder8_instantiate_first_problem = {
+    "name": "8-bit Adder (Instantiate First)",
+    "module_name": "adder8",
+    "yosys_module_name": "\\adder8",
+    "prompt": textwrap.dedent("""\
+        // Design a 8-bit ripple-carry adder using a structural Verilog description.
+        // First, declare wires for intermediate carries, then, instantiate full_adders
+        // Requirements:
+        // 1. Instantiate 8 full_adder instances at first to create a 8bit adder
+        // 2. Define full_adder in second module
+        // 3. Connect carry-out of each stage to carry-in of the next
+        // 4. Use descriptive instance names (e.g., FA0, FA1, ..., FA7)
+        module adder8(
+            input  [7:0] a,
+            input  [7:0] b,
+            input        cin,
+            output [7:0] sum,
+            output       cout
+        );
+        wire c1, c2, c3, c4, c5, c6, c7;
+        """),
+    "testbench": textwrap.dedent("""\
+        `timescale 1ns/1ps
+        `include "dut.v"
+        module tb;
+          reg [7:0] a, b; reg cin;
+          wire [7:0] sum; wire cout;
+          integer i, j, k, error_count;
+          adder8 UUT(.a(a), .b(b), .cin(cin), .sum(sum), .cout(cout));
+          initial begin
+            error_count = 0;
+            for (i = 0; i < 256; i = i + 1) for (j = 0; j < 256; j = j + 1) for (k = 0; k < 2; k = k + 1) begin
+              a = i; b = j; cin = k; #10;
+              if ({cout, sum} !== a + b + cin) begin
+                $display("ERROR [8-bit Adder]: a=%h, b=%h, cin=%b -> GOT: %h, EXPECTED: %h", a, b, cin, {cout, sum}, a + b + cin);
+                error_count = error_count + 1;
+              end
+            end
+            if (error_count == 0) $display("All 131,072 tests passed for 8-bit adder!");
+            else $fatal(1, "Found %0d errors in 8-bit adder test.", error_count);
+            $finish(0);
+          end
+        endmodule
+        """)
+}
+
+
 
 # --- Problem: 16-bit Adder (Modular Design) ---
 # Depends on the 4-bit adder.
@@ -1246,8 +1546,14 @@ mac64_problem = {
 
 # --- Define a list containing all the questions to be tested, and the main file will import this list ---
 all_problems = [
-    adder4_problem,
+    # adder4_problem,
+    # adder8_problem_scenario_1,
+    # adder8_problem_scenario_2,
+    # full_adder_problem,
+    # adder8_problem_mod,
     # adder8_problem,
+    # adder8_reverse_problem,
+    adder8_instantiate_first_problem,
     # adder16_problem,
     # adder32_problem,
     # adder64_problem,
